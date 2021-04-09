@@ -84,7 +84,14 @@ class Broker:
             print(f"{e['error']['name']} : {e['error']['message']}" )
             return
             
-        return accounts     
+        return accounts
+
+    def get_current_info(self, coin_names):
+        url = "https://api.upbit.com/v1/ticker"
+        querystring = {"markets":",".join(coin_names)}
+        response = requests.request("GET", url, params=querystring)
+        return response.json()
+
     # def get_cash_from_server(self):
         
     #     headers = get_headers()

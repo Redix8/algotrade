@@ -45,15 +45,14 @@ if __name__ == '__main__':
     broker = Broker()
     broker.set_cash(100_000)
     coin_names = broker.get_market_info()
+    info = broker.get_current_info(coin_names)
+    top30 = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]), reverse=True)[:30]
 
-    
     print("Load coin data")
     coin_data = []
-    for coin_name in tqdm(coin_names):
-        coin_data.append(CoinData(coin_name)) 
+    for coin in tqdm(top30):
+        coin_data.append(CoinData(coin["market"])) 
         time.sleep(0.1)
-    
-    top30 = sorted(coin_data, key=lambda c: c.trade_price_24H_acc, reverse=True)[:30]
 
     cash_per_order = (broker.get_cash() / MAX_ORDER) * 0.98
 
