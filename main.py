@@ -82,7 +82,7 @@ if __name__ == '__main__':
                 continue
 
             if cond_buy:
-                order_volume = (cash_per_order * (1-market_info["bid_fee"]) / coin.last_price)
+                order_volume = (cash_per_order * (1-float(market_info["bid_fee"])) / coin.last_price)
                 order = {
                     "coin": coin,
                     "coin_name": coin.coin_name,

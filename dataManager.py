@@ -41,6 +41,7 @@ class CoinData:
         return df
 
     def loadFromServer(self):
+        print(f"load {self.coin_name} data from server")
         querystring = {
             "market": self.coin_name,
             "to":"", # 2019-01-01T00:00:00Z
