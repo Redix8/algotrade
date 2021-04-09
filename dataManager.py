@@ -78,6 +78,8 @@ class CoinData:
         df['MA10'] = df['trade_price'].rolling(10).mean()
         df['MA20'] = df['trade_price'].rolling(20).mean()
         df['rsiMA3'] = df['RSI'].rolling(3).mean()
+        
+        self.last_price = df['trade_price'][-2]
 
         return df
 

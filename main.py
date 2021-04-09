@@ -1,6 +1,7 @@
 from dataManager import CoinData
 from strategy import myStrategyRSI
 from broker import Broker
+from collections import deque
 import datetime
 import time
 from tqdm import tqdm
@@ -40,45 +41,57 @@ logger.addHandler(file_handler)
 # (cash / price)
 
 MAX_ORDER = 5
+START_CASH = 100_000
 
 if __name__ == '__main__':
     broker = Broker()
-    broker.set_cash(100_000)
+    broker.set_cash(START_CASH)
     coin_names = broker.get_market_info()
+    current_order = 0
+    
     info = broker.get_current_info(coin_names)
     top30 = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]), reverse=True)[:30]
+    # reverseAcc = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]))[20:-10] # test?
 
     print("Load coin data")
     coin_data = []
-    for coin in tqdm(top30):
-        coin_data.append(CoinData(coin["market"])) 
+    for coin_name in tqdm(coin_names):
+        coin_data.append(CoinData(coin_name)) 
         time.sleep(0.1)
 
-    cash_per_order = (broker.get_cash() / MAX_ORDER) * 0.98
+    cash_per_order = (broker.get_cash() / (MAX_ORDER-current_order))
 
-    current_accounts = broker.get_accounts()
-    current_order = 0
+    current_accounts = broker.get_accounts()    
     
-    for coin in top30:
+    buy_orders = []
+    for coin in coin_data:
         cond_buy, cond_sell = myStrategyRSI(coin)
-        account = current_accounts[coin.coin_name]
-        
-        if account["balance"] > 0 and not account["locked"]: # 현재 코인 있음
-            if cond_sell and cond_buy:
+        account = current_accounts.get(coin.coin_name)
+        if account:
+            if account["balance"] > 0 and not account["locked"]: # 현재 코인 있음
+                if cond_sell and cond_buy:
+                    continue
+                elif cond_sell:
+                    broker.sell(coin.coin_name, account["balance"], coin.df["trade_price"][-2]) #전일종가에 판매           
+
+        else:
+            market_info = broker.marketCheck(coin.coin_name)
+            if not market_info["market"]["state"] == "active":
                 continue
-            elif cond_sell:
-                broker.sell(coin.coin_name, account["balance"], coin.df["trade_price"][-2]) #전일종가에 판매           
-                
-            
+            if cash_per_order<5000:
+                continue
 
-
-            pass
-
-            # 현재 보유 자산 총액의 % 로 주문할것.
-
-
-
-
+            if cond_buy:
+                order_volume = (cash_per_order * (1-market_info["bid_fee"]) / coin.last_price)
+                order = {
+                    "coin": coin,
+                    "coin_name": coin.coin_name,
+                    "volume": order_volume,
+                    "price" : coin.last_price,
+                }
+                buy_orders.append(order)
+        
+          
 
 
 
