@@ -105,17 +105,58 @@ app.layout = html.Div([
         html.Div(id="sell_list_table"),
     ], style={"columnCount":2}),
 
-    # html.Div([
-    #     html.Table([
-    #         html.Tr([html.Th('Button 1'),
-    #                  html.Th('Button 2'),]),
-    #         html.Tr([html.Td(btn1 or 0),
-    #                  html.Td(btn2 or 0),])
-    #     ]),
-    #     html.Pre(ctx_msg)
-    # ])
-
+    html.Label("내 보유 자산"),
+    html.Div([
+        html.Table([
+            html.Thead(
+                html.Tr([
+                    html.Th('Coin name'),
+                    html.Th('volume'),
+                    html.Th('매수평균'),
+                    html.Th('현재가'),
+                    html.Th('등락률')
+                ])
+            ),
+            html.Tbody(id="my_account"),
+            dcc.Interval(
+                id="account_interval",
+                interval=5000,
+                n_intervals=0
+            ),
+        ]),        
+    ]),
 ])
+@app.callback(
+    Output("my_account", "children"),
+    Input("account_interval", "n_intervals")
+)
+def update_accounts(n):
+    global broker
+    accs = broker.get_accounts()
+    tinfo = broker.get_current_info([cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"]])    
+    tinfo = {c["market"]: c["trade_price"] for c in tinfo}
+    rows = []
+    for cname, acc in accs.items():
+        if cname in ["KRW-KRW", "KRW-USDT"]:
+            item = html.Tr([
+                html.Td(cname),
+                html.Td(acc["balance"]),
+                html.Td("-"),
+                html.Td("-"),
+                html.Td("-"),
+            ])
+        else:
+            item = html.Tr([
+                html.Td(cname),
+                html.Td(acc["balance"]),
+                html.Td(acc["avg_buy_price"]),
+                html.Td(tinfo[cname]),
+                html.Td(f'{(float(tinfo[cname])/float(acc["avg_buy_price"])-1)*100:.2f}%'),
+            ])
+        rows.append(item)        
+
+    return rows
+
 
 def generate_buy_list():
     global buy_orders, top50
@@ -202,7 +243,7 @@ def load_coin_data(n_clicks):
                         "coin_name": coin.coin_name,
                         "volume": account["balance"],
                         "price" : coin.df["trade_price"][-2],
-                        "chg": (1-coin.df["trade_price"][-2]/float(account["avg_buy_price"]))*100
+                        "chg": (coin.df["trade_price"][-2]/float(account["avg_buy_price"])-1)*100
                     }
                     sell_orders.append(order)
                     # broker.sell(coin.coin_name, account["balance"], coin.df["trade_price"][-2]) #전일종가에 판매           
