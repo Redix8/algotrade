@@ -57,8 +57,10 @@ START_CASH = 100_000
 broker = Broker()
 broker.set_cash(START_CASH)
 coin_names = broker.get_market_info()
-# info = broker.get_current_info(coin_names)
+info = broker.get_current_info(coin_names)
 # top30 = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]), reverse=True)[:30]
+top50 = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]), reverse=True)[:50]
+top50 = {x['market']:x["acc_trade_price_24h"] for x in info}
 # reverseAcc = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]))[20:-10] # test?
 
 # Dash 
@@ -97,8 +99,11 @@ app.layout = html.Div([
     ]),
     
     html.Div([
-        
-    ]),
+        html.Label("Buy list"),
+        html.Div(id="buy_list_table"),
+        html.Label("Sell list"),
+        html.Div(id="sell_list_table"),
+    ], style={"columnCount":2}),
 
     # html.Div([
     #     html.Table([
@@ -112,11 +117,59 @@ app.layout = html.Div([
 
 ])
 
-@app.callback(Output("loading-output-1", "children"), Input("data_load", "n_clicks"))
+def generate_buy_list():
+    global buy_orders, top50
+    return html.Table([        
+        html.Thead(
+            html.Tr([
+                html.Th('Coin Name'),
+                html.Th('No.'),
+                html.Th('Trade Price 24'),
+                html.Th('Momentum')
+            ])
+        ),
+        html.Tbody([
+            html.Tr([
+                html.Td(od["coin_name"]),
+                html.Td(i),
+                html.Td(f'{top50.get(od["coin_name"])/100_000_000:,.2f}억원'),
+                html.Td(f'{od["coin"].df["Momentum"][-2]:.2f}')
+            ]) for i, od in enumerate(buy_orders) if od["coin_name"] in top50
+        ])
+    ])
+
+def generate_sell_list():
+    global sell_orders
+    return  html.Table([
+        html.Thead(
+            html.Tr([
+                html.Th('Coin Name'),
+                html.Th('close'),
+                html.Th('volume'),
+                html.Th('등락률(%)')
+            ])
+        ),
+        html.Tbody([
+            html.Tr([
+                html.Td(od["coin_name"]),                
+                html.Td(f'{od["price"]}'),
+                html.Td(f'{od["volume"]}'),
+                html.Td(f'{od["chg"]}')
+            ]) for od in enumerate(sell_orders)
+        ])
+    ])
+
+
+@app.callback(
+    Output("buy_list_table", "children"),
+    Output("sell_list_table", "children"),
+    Output("loading-output-1", "children"),
+    Input("data_load", "n_clicks"),
+)
 def load_coin_data(n_clicks):
     if n_clicks is None:
         raise PreventUpdate
-    print("Load coin data")
+    logger.info("Load coin data")
     global coin_data, coin_names, broker, current_order, buy_orders, sell_orders
     coin_data = []
     for coin_name in tqdm(coin_names):
@@ -149,8 +202,9 @@ def load_coin_data(n_clicks):
                         "coin_name": coin.coin_name,
                         "volume": account["balance"],
                         "price" : coin.df["trade_price"][-2],
+                        "chg": (1-coin.df["trade_price"][-2]/float(account["avg_buy_price"]))*100
                     }
-                    sell_orders.append()
+                    sell_orders.append(order)
                     # broker.sell(coin.coin_name, account["balance"], coin.df["trade_price"][-2]) #전일종가에 판매           
 
         else:
@@ -169,7 +223,9 @@ def load_coin_data(n_clicks):
                     "price" : coin.last_price,
                 }
                 buy_orders.append(order)
-    return 
+        
+    return generate_buy_list(), generate_sell_list(), None
+
 
 @app.callback(Output("coin_chart", "figure"), Input("coin_selector", "value"))
 def update_graph(coin_name):

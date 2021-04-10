@@ -2,7 +2,10 @@ import pandas as pd
 import numpy as np
 import requests
 import datetime
+import logging
 from collections import deque
+
+logger = logging.getLogger(())
 
 def calRSI(m_Df, m_N):
 
@@ -32,16 +35,16 @@ class CoinData:
 
     def loadFromCSV(self):
         try:
-            print(f"load {self.coin_name} data.")
+            logger.info(f"load {self.coin_name} data.")            
             df = pd.read_csv(f"./coindata/{self.coin_name}.csv")
         except:
-            print(f"{self.coin_name} has no data")
+            logger.info(f"{self.coin_name} has no data")
             df = None
 
         return df
 
     def loadFromServer(self):
-        print(f"load {self.coin_name} data from server")
+        logger.info(f"load {self.coin_name} data from server")
         querystring = {
             "market": self.coin_name,
             "to":"", # 2019-01-01T00:00:00Z
@@ -79,6 +82,10 @@ class CoinData:
         df['MA10'] = df['trade_price'].rolling(10).mean()
         df['MA20'] = df['trade_price'].rolling(20).mean()
         df['rsiMA3'] = df['RSI'].rolling(3).mean()
+        if len(df)>28:
+            df['Momentum'] = df['trade_price'].diff(28)/df['trade_price'][-29]
+        else:
+            df['Momentum'] = -999
         
         self.last_price = df['trade_price'][-2]
 
