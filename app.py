@@ -58,9 +58,44 @@ broker = Broker()
 broker.set_cash(START_CASH)
 coin_names = broker.get_market_info()
 info = broker.get_current_info(coin_names)
+# 거래대금 순위
 # top30 = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]), reverse=True)[:30]
 top50 = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]), reverse=True)[:50]
 top50 = {x['market']:x["acc_trade_price_24h"] for x in info}
+# 시가총액 순위
+top30big = [
+     "KRW-BTC"  ,  # 비트코인
+     "KRW-ETH"  ,  # 이더리움
+     "KRW-XRP"  ,  # 리플
+     "KRW-ADA"  ,  # 에이다   
+     "KRW-DOT"  ,  # 폴카닷
+     "KRW-LTC"  ,  # 라이트코인
+     "KRW-LINK" ,  # 체인링크
+     "KRW-BCH"  ,  # 비트코인캐시
+     "KRW-XLM"  ,  # 스텔라루멘
+     "KRW-THETA",  # 세타토큰
+     "KRW-TRX"  ,  # 트론
+     "KRW-VET"  ,  # 비체인    
+     "KRW-BTT"  ,  # 비트토렌트
+     "KRW-IOTA" ,  # 아이오타
+     "KRW-EOS"  ,  # 이오스
+     "KRW-BSV"  ,  # 비트코인에스브이
+     "KRW-CRO"  ,  # 크립토닷컴체인
+     "KRW-XTZ"  ,  # 테조스
+     "KRW-ATOM" ,  # 코스모스
+     "KRW-NEO"  ,  # 네오
+     "KRW-XEM"  ,  # 넴    
+     "KRW-CHZ"  ,  # 칠리즈
+     "KRW-ENJ"  ,  # 엔진코인
+     "KRW-ETC"  ,  # 이더리움클래식
+     "KRW-BAT"  ,  # 베이직어텐션토큰
+     "KRW-HBAR" ,  # 헤데라해시그래프
+     "KRW-ZIL"  ,  # 질리카
+     "KRW-MANA" ,  # 디센트럴랜드
+     "KRW-TFUEL",  # 쎄타퓨엘
+     "KRW-ICX"  ,  # 아이콘
+]
+
 # reverseAcc = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]))[20:-10] # test?
 
 # Dash 
@@ -97,7 +132,12 @@ app.layout = html.Div([
             id='coin_chart',            
         )
     ]),
-    
+
+    html.Div([
+        html.Button('Buy coins', id='buy_button'),        
+        html.Button('Sell coins', id='sell_button'),
+    ]),
+
     html.Div([
         html.Label("Buy list"),
         html.Div(id="buy_list_table"),
@@ -126,6 +166,24 @@ app.layout = html.Div([
         ]),        
     ]),
 ])
+
+# @app.callback(
+#     Input("buy_button", "n_clicks"),
+# )
+# def send_buy_request(n):
+#     if n_clicks is None:
+#         raise PreventUpdate
+#     return
+
+# @app.callback(
+#     Input("sell_button", "n_clicks"),
+# )
+# def send_sell_request(n):
+#     if n_clicks is None:
+#         raise PreventUpdate
+#     return
+
+
 @app.callback(
     Output("my_account", "children"),
     Input("account_interval", "n_intervals")
@@ -160,13 +218,17 @@ def update_accounts(n):
 
 def generate_buy_list():
     global buy_orders, top50
+    sorted_orders = [od for od in buy_orders if od["coin_name"] in top50]
+    sorted_orders = sorted(sorted_orders, key=lambda x : top50.get(x["coin_name"]), reverse=True)
+    sorted_orders = sorted(sorted_orders, key=lambda x : x["coin"].df["Momentum"][-2], reverse=True)
     return html.Table([        
         html.Thead(
             html.Tr([
                 html.Th('Coin Name'),
                 html.Th('No.'),
                 html.Th('Trade Price 24'),
-                html.Th('Momentum')
+                html.Th('Momentum'),
+                html.Th('close')
             ])
         ),
         html.Tbody([
@@ -174,8 +236,9 @@ def generate_buy_list():
                 html.Td(od["coin_name"]),
                 html.Td(i),
                 html.Td(f'{top50.get(od["coin_name"])/100_000_000:,.2f}억원'),
-                html.Td(f'{od["coin"].df["Momentum"][-2]:.2f}')
-            ]) for i, od in enumerate(buy_orders) if od["coin_name"] in top50
+                html.Td(f'{od["coin"].df["Momentum"][-2]:.2f}'),
+                html.Td(od['price']),
+            ]) for i, od in enumerate(sorted_orders) if od["coin_name"] in top30big     # 정렬 및 필터
         ])
     ])
 
@@ -196,7 +259,7 @@ def generate_sell_list():
                 html.Td(f'{od["price"]}'),
                 html.Td(f'{od["volume"]}'),
                 html.Td(f'{od["chg"]}')
-            ]) for od in enumerate(sell_orders)
+            ]) for od in sell_orders
         ])
     ])
 
@@ -213,6 +276,8 @@ def load_coin_data(n_clicks):
     logger.info("Load coin data")
     global coin_data, coin_names, broker, current_order, buy_orders, sell_orders
     coin_data = []
+    buy_orders = []
+    sell_orders = []
     for coin_name in tqdm(coin_names):
         coin_data.append(CoinData(coin_name)) 
         time.sleep(0.1)
@@ -264,7 +329,7 @@ def load_coin_data(n_clicks):
                     "price" : coin.last_price,
                 }
                 buy_orders.append(order)
-        
+
     return generate_buy_list(), generate_sell_list(), None
 
 
