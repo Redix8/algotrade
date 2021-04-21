@@ -191,7 +191,10 @@ app.layout = html.Div([
 def update_accounts(n):
     global broker
     accs = broker.get_accounts()
-    tinfo = broker.get_current_info([cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"]])    
+    current_balance = [cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"]]
+    tinfo = {}
+    if current_balance:
+        tinfo = broker.get_current_info()    
     tinfo = {c["market"]: c["trade_price"] for c in tinfo}
     rows = []
     for cname, acc in accs.items():
