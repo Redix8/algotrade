@@ -95,8 +95,7 @@ class CoinData:
         df['MA3'] = df['trade_price'].rolling(3).mean()
         df['MA5'] = df['trade_price'].rolling(5).mean()
         df['MA10'] = df['trade_price'].rolling(10).mean()
-        df['MA20'] = df['trade_price'].rolling(20).mean()
-        df['rsiMA3'] = df['RSI'].rolling(3).mean()
+        df['MA20'] = df['trade_price'].rolling(20).mean()        
         df['MACD'] = df['trade_price'].ewm(span=12).mean() - df['trade_price'].ewm(span=26).mean()
         df['MACDs'] = df['MACD'].ewm(span=9).mean()
         df['MACDo'] = df['MACD'] - df['MACDs']
@@ -104,7 +103,7 @@ class CoinData:
         stochSlowK, stochSlowD = calStochastic(df['high_price'], df['low_price'], df['trade_price'])
         df["stochSlowK"] = stochSlowK
         df["stochSlowD"] = stochSlowD
-
+        
         if len(df)>28:
             df['Momentum'] = df['trade_price'].diff(28)/df['trade_price'][-29]
         else:
