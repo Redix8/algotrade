@@ -4,7 +4,7 @@
 # visit http://127.0.0.1:8050/ in your web browser.
 
 from dataManager import CoinData
-from strategy import myStrategyRSI
+from strategy import myStrategyRSI, myStrategyM
 from broker import Broker
 from collections import deque
 import datetime
@@ -35,10 +35,10 @@ stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
 
 # log를 파일에 출력
-# file_handler = logging.handlers.TimedRotatingFileHandler(filename="logfile", when="midnight", interval=1, encoding="utf-8")
-# file_handler.setFormatter(formatter)
-# file_handler.suffix = "%Y%m%d"
-# logger.addHandler(file_handler)
+file_handler = logging.handlers.TimedRotatingFileHandler(filename="logfile", when="midnight", interval=1, encoding="utf-8")
+file_handler.setFormatter(formatter)
+file_handler.suffix = "%Y%m%d"
+logger.addHandler(file_handler)
 
 # EXCHANGE API
 # [주문 요청]
@@ -95,7 +95,7 @@ top30big = [
      "KRW-TFUEL",  # 쎄타퓨엘
      "KRW-ICX"  ,  # 아이콘
 ]
-
+coin_names = top30big
 # reverseAcc = sorted(info, key=lambda x:float(x["acc_trade_price_24h"]))[20:-10] # test?
 
 # Dash 
@@ -108,6 +108,7 @@ current_order = 0
 coin_data = []
 buy_orders = []
 sell_orders = []
+pending_orders = []
 
 app.layout = html.Div([
     html.H1(children='ALGO Trading'),
@@ -213,21 +214,7 @@ def trade_start_stop(start, stop):
     if 'start_trade' in changed_id:
         return False, html.H4("Trading")
     elif 'stop_trade' in changed_id:
-        return True, html.H4("Stoped")
-    
-
-
-@app.callback(
-    Output("test", "children"),
-    Input("trade_interval", "n_intervals")
-)
-def doing_trade(n):
-    if n <= 0:
-        raise PreventUpdate
-    
-    return html.H4(datetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S"))
-
-    
+        return True, html.H4("Stoped")  
 
 @app.callback(
     Output("my_account", "children"),
@@ -266,9 +253,7 @@ def update_accounts(n):
 
 def generate_buy_list():
     global buy_orders, top50
-    sorted_orders = [od for od in buy_orders if od["coin_name"] in top50]
-    sorted_orders = sorted(sorted_orders, key=lambda x : top50.get(x["coin_name"]), reverse=True)
-    sorted_orders = sorted(sorted_orders, key=lambda x : x["coin"].df["Momentum"][-2], reverse=True)
+    sorted_orders = sorted(buy_orders, key=lambda x : x["coin"].df["Momentum"][-2], reverse=True)
     return html.Table([        
         html.Thead(
             html.Tr([
@@ -312,6 +297,52 @@ def generate_sell_list():
     ])
 
 
+def make_order_list():
+    for coin_name in tqdm(top30big):
+        coin_data.append(CoinData(coin_name)) 
+        time.sleep(0.1)
+    
+    buy_orders = []
+    sell_orders = []
+    buy_list, sell_list = myStrategyM(coin_data)
+    current_accounts = broker.get_accounts()
+    cash_per_order = (broker.get_cash() / (MAX_ORDER-current_order))
+    for coin in buy_list:
+        if cash_per_order<5000:
+            continue
+        account = current_accounts.get(coin.coin_name)
+        if (not account
+            or account["balance"]*account["avg_buy_price"] < 5000
+            and account["locked"]):
+
+            market_info = broker.marketCheck(coin.coin_name)
+            if not market_info["market"]["state"] == "active":
+                continue
+
+            order_volume = (cash_per_order * (1-float(market_info["bid_fee"])) / coin.last_price)
+            order = {
+                "coin": coin,
+                "coin_name": coin.coin_name,
+                "volume": order_volume,
+                "price" : coin.last_price,
+            }
+            buy_orders.append(order)
+         
+    for coin in sell_list:
+        account = current_accounts.get(coin.coin_name)
+        if account:
+            if account["balance"] > 0 and not account["locked"]: # 현재 코인 있음
+                order={
+                    "coin": coin,
+                    "coin_name": coin.coin_name,
+                    "volume": account["balance"],
+                    "price" : coin.df["trade_price"][-2],
+                    "chg": (coin.df["trade_price"][-2]/float(account["avg_buy_price"])-1)*100
+                }
+                sell_orders.append(order)
+    
+    return buy_orders, sell_orders
+
 @app.callback(
     Output("buy_list_table", "children"),
     Output("sell_list_table", "children"),
@@ -322,26 +353,19 @@ def load_coin_data(n_clicks):
     if n_clicks is None:
         raise PreventUpdate
     logger.info("Load coin data")
-    global coin_data, coin_names, broker, current_order, buy_orders, sell_orders
+    global coin_data, coin_names, broker, current_order, buy_orders, sell_orders, top30big
     coin_data = []
-    buy_orders = []
-    sell_orders = []
-    for coin_name in tqdm(coin_names):
-        coin_data.append(CoinData(coin_name)) 
-        time.sleep(0.1)
+    buy_orders, sell_orders = make_order_list()
+                # broker.sell(coin.coin_name, account["balance"], coin.df["trade_price"][-2]) #전일종가에 판매     
 
+    """
     cash_per_order = (broker.get_cash() / (MAX_ORDER-current_order))
-    current_accounts = broker.get_accounts()   
 
     for coin in coin_data:
         cond_buy, cond_sell = myStrategyRSI(coin)
         coin.df["MarkerBuy"] = np.where(cond_buy, coin.df["low_price"]-coin.df["high_price"].mean()/20, np.nan)
-        coin.df["SymbolBuy"] = "triangle-up"
-        coin.df["ColorBuy"] = "green"
-
         coin.df["MarkerSell"] = np.where(cond_sell, coin.df["high_price"]+coin.df["high_price"].mean()/20, np.nan)
-        coin.df["SymbolSell"] = "triangle-down"
-        coin.df["ColorSell"] = "red"
+
         current_buy = cond_buy[-2]
         current_sell = cond_sell[-2]
         account = current_accounts.get(coin.coin_name)
@@ -377,9 +401,55 @@ def load_coin_data(n_clicks):
                     "price" : coin.last_price,
                 }
                 buy_orders.append(order)
-
+    """
     return generate_buy_list(), generate_sell_list(), None
 
+@app.callback(
+    Output("test", "children"),
+    Input("trade_interval", "n_intervals")
+)
+def doing_trade(n):
+    if n <= 0:
+        raise PreventUpdate
+    global pending_orders
+    buy_orders, sell_orders = make_order_list()
+    
+    # 취소    
+    for pending in pending_orders:
+        if pending["side"] in ["bid", "ask"]:
+            res = broker.cancel(pending["market"], pending["price"], pending["volume"], pending["uuid"])
+            pending_orders.append(res)    
+    
+    # 주문 확인
+    if pending_orders:
+        uuids = [pending["uuid"] for pending in pending_orders]
+        res = broker.orderCheck(uuids)
+        left = []
+        c={"bid":"BUY", "ask":"SELL"}
+        for order in res:
+            if order["state"] == "done":
+                logger.info(f"{c[order['side']]} order complete - {order['market']}, {order['price']}, {order['volume']}" )
+            elif order["state"] == "cancel":
+                logger.info(f"{c[order['side']]} order cancel - {order['market']}, {order['price']}, {order['volume']}")
+            else:
+                left.append(order)
+        pending_orders = left
+
+
+
+    for order in sell_orders:
+        res = broker.sell(order["coin_name"], order["price"].  order["volume"])
+        pending_orders.append(res)
+
+    for order in buy_orders:
+        res = broker.buy(order["coin_name"], order["price"], order["volume"])
+        pending_orders.append(res)
+
+
+
+    return html.H4(datetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S"))
+
+    
 
 @app.callback(Output("coin_chart", "figure"), Input("coin_selector", "value"))
 def update_graph(coin_name):
@@ -411,8 +481,8 @@ def update_graph(coin_name):
 
     fig.add_trace(go.Scatter(
             x=df.index,
-            y=df["RSI"],
-            name="RSI"
+            y=df["MFI"],
+            name="MFI"
         ), row=2, col=1)
 
     fig.add_hline(y=65, line_width=1, line_dash="dashdot", line_color="crimson", row=2, col=1)
@@ -422,8 +492,8 @@ def update_graph(coin_name):
                        mode='markers',
                        name ='buy',
                        marker=go.scatter.Marker(size=10,
-                                        symbol=df["SymbolBuy"],
-                                        color=df["ColorBuy"])
+                                        symbol="triangle-up",
+                                        color="green")
                        ),row=1, col=1)
 
     fig.add_trace(go.Scatter(x=df.index,
@@ -431,8 +501,8 @@ def update_graph(coin_name):
                        mode='markers',
                        name ='sell',
                        marker=go.scatter.Marker(size=10,
-                                        symbol=df["SymbolSell"],
-                                        color=df["ColorSell"])
+                                        symbol="triangle-down",
+                                        color="red")
                        ),row=1, col=1)
 
     fig.update_layout(xaxis_rangeslider_visible=False)

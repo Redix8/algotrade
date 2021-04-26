@@ -5,7 +5,9 @@ import hashlib
 from urllib.parse import urlencode
 
 import requests
+import logging
 
+logger = logging.getLogger(())
 
 access_key = os.environ['UPBIT_OPEN_API_ACCESS_KEY']
 secret_key = os.environ['UPBIT_OPEN_API_SECRET_KEY']
@@ -123,14 +125,16 @@ class Broker:
         res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
 
         if res.status_code == 200:
+            logger.info(f'BUY order - {coin_name}, price: {price}, volume: {volume}')
             return res.json()
         else:
             e = res.json()
-            print(f"{e['error']['name']} : {e['error']['message']}" )
+            logger.error(f'BUY order error - {coin_name}, price: {price}, volume: {volume}')
+            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
 
         return 
     
-    def sell(self, coin_name, volume, price):
+    def sell(self, coin_name, price, volume):
         query = {
             'market': coin_name,
             'side': 'ask',
@@ -143,12 +147,32 @@ class Broker:
         res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
 
         if res.status_code == 200:
+            logger.info(f'SELL order - {coin_name}, price: {price}, volume: {volume}')
             return res.json()
         else:
             e = res.json()
-            print(f"{e['error']['name']} : {e['error']['message']}" )
+            logger.error(f'SELL order error - {coin_name}, price: {price}, volume: {volume}')
+            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
 
         return
+
+    def cancel(self, coin_name, price, volume, uuid):
+        query = {
+            'uuid': uuid,
+        }
+        headers = get_headers(query=query)
+
+        res = requests.delete(self.server_url + "/v1/order", params=query, headers=headers)
+
+        if res.status_code == 200:
+            logger.info(f'CANCEL order - {coin_name}, price: {price}, volume: {volume}')
+            return res.json()
+        else:
+            e = res.json()
+            logger.error(f'CANCEL order error - {coin_name}, price: {price}, volume: {volume}')
+            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
+
+        return 
 
     def marketCheck(self, coin_name):
         query = {
@@ -164,6 +188,40 @@ class Broker:
             print(f"{e['error']['name']} : {e['error']['message']}" )
 
         return 
+
+    '''
+    state: wait(체결대가), watch(예약주문 대기), done(전체 체결 완료), cancel(주문 취소)
+    '''
+    def orderCheck(self, uuids, state="wait"):        
+        query = {
+            'state': state,
+        }
+        query_string = urlencode(query)
+
+        uuids_query_string = '&'.join(["uuids[]={}".format(uuid) for uuid in uuids])
+
+        query['uuids[]'] = uuids
+        query_string = "{0}&{1}".format(query_string, uuids_query_string).encode()
+
+        m = hashlib.sha512()
+        m.update(query_string)
+        query_hash = m.hexdigest()
+
+        payload = {
+            'access_key': access_key,
+            'nonce': str(uuid.uuid4()),
+            'query_hash': query_hash,
+            'query_hash_alg': 'SHA512',
+        }
+
+        jwt_token = jwt.encode(payload, secret_key)
+        authorize_token = 'Bearer {}'.format(jwt_token)
+        headers = {"Authorization": authorize_token}
+
+        res = requests.get(self.server_url + "/v1/orders", params=query, headers=headers)
+
+        return res.json()
+
 
 
 
