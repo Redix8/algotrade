@@ -17,6 +17,21 @@ def calRSI(m_Df, m_N):
     RSI = AU.div(AD+AU) *100
     return RSI.squeeze().array
 
+def calMFI(high, low, close, vol, period):
+    typical = (high + low + close) / 3
+    raw = typical * vol
+    pos = np.where(typical.diff(1) > 0, raw, 0)
+    neg = np.where(typical.diff(1) < 0, raw, 0)
+    ratio = pd.DataFrame(pos).rolling(period).sum() / pd.DataFrame(neg).rolling(period).sum()
+    mfi = 100-(100/(1+ratio))    
+    return mfi
+
+def calStochastic(high, low, close, n=14, k=3, d=3):    
+    stochn = (close - low.rolling(n).min()) / (high.rolling(n).max() - low.rolling(n).min())
+    stochSlowK = stochn.rolling(3).mean()
+    stochSlowD = stochSlowK.rolling(3).mean()
+    
+    return stochSlowK, stochSlowD
 
 class CoinData:
     def __init__(self, coin_name):
@@ -85,6 +100,7 @@ class CoinData:
         df['MACD'] = df['trade_price'].ewm(span=12).mean() - df['trade_price'].ewm(span=26).mean()
         df['MACDs'] = df['MACD'].ewm(span=9).mean()
         df['MACDo'] = df['MACD'] - df['MACDs']
+        
         if len(df)>14:
             df['Momentum'] = df['trade_price'].diff(14)/df['trade_price'][-15]
         else:
