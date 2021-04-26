@@ -63,7 +63,13 @@ class Broker:
                 coins.append(coin["market"])
 
         return coins
-    
+
+    def add_cash(self, cash_amount):
+        self.cash += cash_amount
+
+    def sub_cash(self, cash_amount):
+        self.cash -= cash_amount
+
     def set_cash(self, cash_amount):
         self.cash = cash_amount
     

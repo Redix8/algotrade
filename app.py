@@ -51,7 +51,7 @@ logger.addHandler(file_handler)
 
 # static values
 MAX_ORDER = 5
-START_CASH = 100_000
+START_CASH = 50_000
 
 # broker init
 broker = Broker()
@@ -102,8 +102,11 @@ coin_names = top30big
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
+accs = broker.get_accounts()
+current_balance = [cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"]]
 
-current_order = 0
+current_order_used = len(current_balance)
+hours_check = [False for _ in range(24)]
 
 coin_data = []
 buy_orders = []
@@ -411,15 +414,31 @@ def load_coin_data(n_clicks):
 def doing_trade(n):
     if n <= 0:
         raise PreventUpdate
-    global pending_orders
-    buy_orders, sell_orders = make_order_list()
-    
-    # 취소    
-    for pending in pending_orders:
-        if pending["side"] in ["bid", "ask"]:
-            res = broker.cancel(pending["market"], pending["price"], pending["volume"], pending["uuid"])
-            pending_orders.append(res)    
-    
+    global pending_orders, hours_check, current_order_used
+    t = datetime.datetime.now()
+    hour = t.hour
+    # 6시간에 한번
+    if hour in [0, 6, 12, 18] and not hours_check[hour]:            
+        # 취소    
+        for pending in pending_orders:
+            if pending["side"] in ["bid", "ask"]:
+                res = broker.cancel(pending["market"], pending["price"], pending["volume"], pending["uuid"])
+                pending_orders.append(res)
+
+    # 1시간에 한번
+    if not hours_check[hour]:    
+        buy_orders, sell_orders = make_order_list()
+
+        for order in sell_orders:
+            res = broker.sell(order["coin_name"], order["price"].  order["volume"])
+            pending_orders.append(res)
+
+        for order in buy_orders[:MAX_ORDER - current_order_used]:
+            res = broker.buy(order["coin_name"], order["price"], order["volume"])
+            pending_orders.append(res)
+            current_order_used+=1
+            broker.sub_cash(float(order["price"])*float(order["volume"]))
+
     # 주문 확인
     if pending_orders:
         uuids = [pending["uuid"] for pending in pending_orders]
@@ -428,28 +447,22 @@ def doing_trade(n):
         c={"bid":"BUY", "ask":"SELL"}
         for order in res:
             if order["state"] == "done":
-                logger.info(f"{c[order['side']]} order complete - {order['market']}, {order['price']}, {order['volume']}" )
+                logger.info(f"{c[order['side']]} order complete - {order['market']}, {order['price']}, {order['volume']}" )                
+                if c["side"] == "ask":
+                    current_order_used-=1
+                    broker.add_cash(float(order["price"])*float(order["volume"]))
             elif order["state"] == "cancel":
                 logger.info(f"{c[order['side']]} order cancel - {order['market']}, {order['price']}, {order['volume']}")
+                current_order_used-=1
+                broker.add_cash(float(order["price"])*float(order["volume"]))
             else:
                 left.append(order)
         pending_orders = left
 
-
-
-    for order in sell_orders:
-        res = broker.sell(order["coin_name"], order["price"].  order["volume"])
-        pending_orders.append(res)
-
-    for order in buy_orders:
-        res = broker.buy(order["coin_name"], order["price"], order["volume"])
-        pending_orders.append(res)
-
-
-
+    hours_check = [False for _ in range(24)]
+    hours_check[hour] = True
     return html.H4(datetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S"))
 
-    
 
 @app.callback(Output("coin_chart", "figure"), Input("coin_selector", "value"))
 def update_graph(coin_name):
