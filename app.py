@@ -121,6 +121,23 @@ app.layout = html.Div([
         ),
     ]),
 
+    html.Div([
+        html.Button('START Trade', id='start_trade'),
+        html.Button('STOP', id='stop_trade'), 
+        html.Div(id="show_trading_state"),
+        dcc.Interval(
+            id="trade_interval",
+            interval=1000 * 2,
+            n_intervals=0,
+            disabled=True
+        ),               
+    ]),
+
+    html.Div([
+        html.Div(id="test")   
+    ]),
+
+
     html.Div([        
         html.Label("coins"),
         dcc.Dropdown(
@@ -183,6 +200,34 @@ app.layout = html.Div([
 #         raise PreventUpdate
 #     return
 
+@app.callback(
+    Output(component_id='trade_interval', component_property='disabled'),
+    Output("show_trading_state", "children"),
+    Input('start_trade', 'n_clicks'), 
+    Input('stop_trade', 'n_clicks'),
+)
+def trade_start_stop(start, stop):
+    if start is None:
+        return True, html.H4("Stoped")
+    changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
+    if 'start_trade' in changed_id:
+        return False, html.H4("Trading")
+    elif 'stop_trade' in changed_id:
+        return True, html.H4("Stoped")
+    
+
+
+@app.callback(
+    Output("test", "children"),
+    Input("trade_interval", "n_intervals")
+)
+def doing_trade(n):
+    if n <= 0:
+        raise PreventUpdate
+    
+    return html.H4(datetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S"))
+
+    
 
 @app.callback(
     Output("my_account", "children"),

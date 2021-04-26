@@ -100,9 +100,13 @@ class CoinData:
         df['MACD'] = df['trade_price'].ewm(span=12).mean() - df['trade_price'].ewm(span=26).mean()
         df['MACDs'] = df['MACD'].ewm(span=9).mean()
         df['MACDo'] = df['MACD'] - df['MACDs']
-        
-        if len(df)>14:
-            df['Momentum'] = df['trade_price'].diff(14)/df['trade_price'][-15]
+        df['MFI'] = calMFI(df['high_price'], df['low_price'], df['trade_price'], df['candle_acc_trade_volume'], 14)
+        stochSlowK, stochSlowD = calStochastic(df['high_price'], df['low_price'], df['trade_price'])
+        df["stochSlowK"] = stochSlowK
+        df["stochSlowD"] = stochSlowD
+
+        if len(df)>28:
+            df['Momentum'] = df['trade_price'].diff(28)/df['trade_price'][-29]
         else:
             df['Momentum'] = -999
         
