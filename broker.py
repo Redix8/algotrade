@@ -89,7 +89,7 @@ class Broker:
                 }
         else:
             e = res.json()
-            print(f"{e['error']['name']} : {e['error']['message']}" )
+            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
             return
             
         return accounts
@@ -130,7 +130,7 @@ class Broker:
 
         res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
 
-        if res.status_code == 200:
+        if res.status_code == 201:
             logger.info(f'BUY order - {coin_name}, price: {price}, volume: {volume}')
             return res.json()
         else:
@@ -152,7 +152,7 @@ class Broker:
 
         res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
 
-        if res.status_code == 200:
+        if res.status_code == 201:
             logger.info(f'SELL order - {coin_name}, price: {price}, volume: {volume}')
             return res.json()
         else:

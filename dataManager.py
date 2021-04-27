@@ -50,16 +50,16 @@ class CoinData:
 
     def loadFromCSV(self):
         try:
-            logger.info(f"load {self.coin_name} data.")            
+            # logger.info(f"load {self.coin_name} data.")            
             df = pd.read_csv(f"./coindata/{self.coin_name}.csv")
         except:
-            logger.info(f"{self.coin_name} has no data")
+            # logger.info(f"{self.coin_name} has no data")
             df = None
 
         return df
 
     def loadFromServer(self):
-        logger.info(f"load {self.coin_name} data from server")
+        # logger.info(f"load {self.coin_name} data from server")
         querystring = {
             "market": self.coin_name,
             "to":"", # 2019-01-01T00:00:00Z

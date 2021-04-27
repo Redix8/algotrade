@@ -1,3 +1,5 @@
 coindata/
 strategy.py
 *.zip
+log/
+tmp/
