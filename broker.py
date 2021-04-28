@@ -191,7 +191,7 @@ class Broker:
             return res.json()
         else:
             e = res.json()
-            print(f"{e['error']['name']} : {e['error']['message']}" )
+            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
 
         return 
 
@@ -225,8 +225,13 @@ class Broker:
         headers = {"Authorization": authorize_token}
 
         res = requests.get(self.server_url + "/v1/orders", params=query, headers=headers)
-
-        return res.json()
+        if res.status_code == 200:
+            return res.json()
+        else:
+            e = res.json()
+            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
+            
+        return 
 
 
 
