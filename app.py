@@ -26,6 +26,8 @@ from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+server_loger = logging.getLogger('werkzeug')
+server_loger.disabled = True
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -389,52 +391,7 @@ def load_coin_data(n_clicks):
     global coin_data, coin_names, broker, current_order, buy_orders, sell_orders, top30big
     coin_data = []
     buy_orders, sell_orders = make_order_list()
-                # broker.sell(coin.coin_name, account["balance"], coin.df["trade_price"][-2]) #전일종가에 판매     
 
-    """
-    cash_per_order = (broker.get_cash() / (MAX_ORDER-current_order))
-
-    for coin in coin_data:
-        cond_buy, cond_sell = myStrategyRSI(coin)
-        coin.df["MarkerBuy"] = np.where(cond_buy, coin.df["low_price"]-coin.df["high_price"].mean()/20, np.nan)
-        coin.df["MarkerSell"] = np.where(cond_sell, coin.df["high_price"]+coin.df["high_price"].mean()/20, np.nan)
-
-        current_buy = cond_buy[-2]
-        current_sell = cond_sell[-2]
-        account = current_accounts.get(coin.coin_name)
-
-        if account:
-            if account["balance"] > 0 and not account["locked"]: # 현재 코인 있음
-                if current_sell and current_buy:
-                    continue
-                elif current_sell:
-                    order={
-                        "coin": coin,
-                        "coin_name": coin.coin_name,
-                        "volume": account["balance"],
-                        "price" : coin.df["trade_price"][-2],
-                        "chg": (coin.df["trade_price"][-2]/float(account["avg_buy_price"])-1)*100
-                    }
-                    sell_orders.append(order)
-                    # broker.sell(coin.coin_name, account["balance"], coin.df["trade_price"][-2]) #전일종가에 판매           
-
-        else:
-            market_info = broker.marketCheck(coin.coin_name)
-            if not market_info["market"]["state"] == "active":
-                continue
-            if cash_per_order<5000:
-                continue
-
-            if current_buy:
-                order_volume = (cash_per_order * (1-float(market_info["bid_fee"])) / coin.last_price)
-                order = {
-                    "coin": coin,
-                    "coin_name": coin.coin_name,
-                    "volume": order_volume,
-                    "price" : coin.last_price,
-                }
-                buy_orders.append(order)
-    """
     return None
 
 
@@ -605,5 +562,5 @@ def update_graph(coin_name):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=False)
     

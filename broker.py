@@ -198,15 +198,14 @@ class Broker:
     '''
     state: wait(체결대가), watch(예약주문 대기), done(전체 체결 완료), cancel(주문 취소)
     '''
-    def orderCheck(self, uuids, state="wait"):        
+    def orderCheck(self, uuids, states=["wait"]):        
         query = {
-            'state': state,
+            'states[]': states,
+            'uuids[]': uuids,   
         }
-        query_string = urlencode(query)
-
+        states_query_string = '&'.join(["states[]={}".format(state) for state in states])
         uuids_query_string = '&'.join(["uuids[]={}".format(uuid) for uuid in uuids])
 
-        query['uuids[]'] = uuids
         query_string = "{0}&{1}".format(query_string, uuids_query_string).encode()
 
         m = hashlib.sha512()
@@ -230,7 +229,7 @@ class Broker:
         else:
             e = res.json()
             logger.error(f"{e['error']['name']} : {e['error']['message']}" )
-            
+
         return 
 
 
