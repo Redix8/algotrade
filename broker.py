@@ -98,12 +98,12 @@ class Broker:
     def get_current_info(self, coin_names):
         url = "https://api.upbit.com/v1/ticker"
         querystring = {"markets":",".join(coin_names)}
-        response = requests.request("GET", url, params=querystring)
+        res = requests.request("GET", url, params=querystring)
         
-        if res.status_code == 201:            
-            return response.json()
+        if res.status_code == 200:            
+            return res.json()
         else:
-            e = response.json()
+            e = res.json()
             logger.error(f"{e['error']['name']} : {e['error']['message']}" )
         return 
 
