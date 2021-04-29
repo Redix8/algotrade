@@ -2,6 +2,7 @@ import os
 import jwt
 import uuid
 import hashlib
+import time
 from urllib.parse import urlencode
 
 import requests
@@ -98,7 +99,13 @@ class Broker:
         url = "https://api.upbit.com/v1/ticker"
         querystring = {"markets":",".join(coin_names)}
         response = requests.request("GET", url, params=querystring)
-        return response.json()
+        
+        if res.status_code == 201:            
+            return response.json()
+        else:
+            e = response.json()
+            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
+        return 
 
     # def get_cash_from_server(self):
         
@@ -128,15 +135,20 @@ class Broker:
         }
         headers = get_headers(query=query)
 
-        res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
+        while True:
+            res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
 
-        if res.status_code == 201:
-            logger.info(f'BUY order - {coin_name}, price: {price}, volume: {volume}')
-            return res.json()
-        else:
-            e = res.json()
-            logger.error(f'BUY order error - {coin_name}, price: {price}, volume: {volume}')
-            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
+            if res.status_code == 201:
+                logger.info(f'BUY order - {coin_name}, price: {price}, volume: {volume}')
+                return res.json()
+            else:
+                e = res.json()
+                logger.error(f'BUY order error - {coin_name}, price: {price}, volume: {volume}')
+                logger.error(f"{e['error']['name']} : {e['error']['message']}" )
+                if e['error']['name'] == "too_many_request_order":
+                    time.sleep(0.1)
+                    continue
+                return
 
         return 
     
@@ -149,17 +161,21 @@ class Broker:
             'ord_type': 'limit',
         }
         headers = get_headers(query=query)
+        
+        while True:
+            res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
 
-        res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
-
-        if res.status_code == 201:
-            logger.info(f'SELL order - {coin_name}, price: {price}, volume: {volume}')
-            return res.json()
-        else:
-            e = res.json()
-            logger.error(f'SELL order error - {coin_name}, price: {price}, volume: {volume}')
-            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
-
+            if res.status_code == 201:
+                logger.info(f'SELL order - {coin_name}, price: {price}, volume: {volume}')
+                return res.json()
+            else:
+                e = res.json()
+                logger.error(f'SELL order error - {coin_name}, price: {price}, volume: {volume}')
+                logger.error(f"{e['error']['name']} : {e['error']['message']}" )
+                if e['error']['name'] == "too_many_request_order":
+                    time.sleep(0.1)
+                    continue
+                return
         return
 
     def cancel(self, coin_name, price, volume, uuid):
@@ -167,17 +183,19 @@ class Broker:
             'uuid': uuid,
         }
         headers = get_headers(query=query)
+        while True:
+            res = requests.delete(self.server_url + "/v1/order", params=query, headers=headers)
 
-        res = requests.delete(self.server_url + "/v1/order", params=query, headers=headers)
-
-        if res.status_code == 200:
-            logger.info(f'CANCEL order - {coin_name}, price: {price}, volume: {volume}')
-            return res.json()
-        else:
-            e = res.json()
-            logger.error(f'CANCEL order error - {coin_name}, price: {price}, volume: {volume}')
-            logger.error(f"{e['error']['name']} : {e['error']['message']}" )
-
+            if res.status_code == 200:
+                logger.info(f'CANCEL order - {coin_name}, price: {price}, volume: {volume}')
+                return res.json()
+            else:
+                e = res.json()
+                logger.error(f'CANCEL order error - {coin_name}, price: {price}, volume: {volume}')
+                logger.error(f"{e['error']['name']} : {e['error']['message']}" )
+                if e['error']['name'] == "too_many_request_order":
+                    time.sleep(0.1)
+                    continue
         return 
 
     def marketCheck(self, coin_name):
@@ -206,7 +224,7 @@ class Broker:
         states_query_string = '&'.join(["states[]={}".format(state) for state in states])
         uuids_query_string = '&'.join(["uuids[]={}".format(uuid) for uuid in uuids])
 
-        query_string = "{0}&{1}".format(query_string, uuids_query_string).encode()
+        query_string = "{0}&{1}".format(states_query_string, uuids_query_string).encode()
 
         m = hashlib.sha512()
         m.update(query_string)

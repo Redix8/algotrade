@@ -116,11 +116,18 @@ coin_data = []
 buy_orders = []
 sell_orders = []
 pending_orders = []
+sold_orders = []
 try:
     with open('tmp/pending', 'rb') as f:
         pending_orders = pickle.load(f)
     if len(pending_orders):
         current_order_used+=len(pending_orders)
+except:
+    pass
+
+try:
+    with open('tmp/sold', 'rb') as f:
+        sold_orders = pickle.load(f)
 except:
     pass
 
@@ -351,7 +358,8 @@ def make_order_list():
             continue
         account = current_accounts.get(coin.coin_name)
         if (not account
-            or account["balance"]*account["avg_buy_price"] < 5000):
+            or (account["balance"]*account["avg_buy_price"] < 5000
+            and account["locked"]*account["avg_buy_price"] < 5000)):
 
             market_info = broker.marketCheck(coin.coin_name)
             if not market_info["market"]["state"] == "active":
@@ -406,16 +414,17 @@ def check_pending(n):
         uuids = [pending["uuid"] for pending in pending_orders]
         res = broker.orderCheck(uuids, ["done", "cancel"])        
         c={"bid":"BUY", "ask":"SELL"}
-        for order in res:            
-            if order["state"] == "done":                
-                if c["side"] == "ask":
+        if res:
+            for order in res:            
+                if order["state"] == "done":                
+                    if order["side"] == "ask":
+                        current_order_used-=1
+                        broker.add_cash(float(order["price"])*float(order["volume"]))
+                    logger.info(f"{c[order['side']]} order complete - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}")
+                elif order["state"] == "cancel":                
                     current_order_used-=1
                     broker.add_cash(float(order["price"])*float(order["volume"]))
-                logger.info(f"{c[order['side']]} order complete - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}")
-            elif order["state"] == "cancel":                
-                current_order_used-=1
-                broker.add_cash(float(order["price"])*float(order["volume"]))
-                logger.info(f"{c[order['side']]} order cancel - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}")
+                    logger.info(f"{c[order['side']]} order cancel - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}")
         
         waits = broker.orderCheck(uuids)
         pending_orders = []
@@ -445,7 +454,7 @@ def check_pending(n):
 def doing_trade(n_intervals, disabled):
     if disabled or n_intervals<=0:
         raise PreventUpdate
-    global pending_orders, hours_check, current_order_used, buy_orders, sell_orders
+    global pending_orders, hours_check, current_order_used, buy_orders, sell_orders, sold_orders
     t = datetime.datetime.now()
     hour = t.hour
    
@@ -458,18 +467,22 @@ def doing_trade(n_intervals, disabled):
         current_balance = [cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"]]
         tinfo = {}
         if current_balance:
-            tinfo = broker.get_current_info(current_balance)    
-        tinfo = {c["market"]: c["trade_price"] for c in tinfo} 
-        for k, v in acc.items():
-            if k == "KRW-KRW" : total_balance += v["balance"]+v["locked"]
-            elif k == "KRW-USDT": continue
-            else: total_balance += (v["balance"]*float(tinfo.get(k)) + v["locked"]*float(tinfo.get(k)))
+            for i in range(3):
+                tinfo = broker.get_current_info(current_balance)
+                tinfo = {c["market"]: c["trade_price"] for c in tinfo}
+                if tinfo: break
+        if tinfo:
+            for k, v in acc.items():
+                if k == "KRW-KRW" : total_balance += v["balance"]+v["locked"]
+                elif k == "KRW-USDT": continue
+                else: total_balance += (v["balance"]*float(tinfo.get(k)) + v["locked"]*float(tinfo.get(k)))
             
         logger.info(f'Current Money : {total_balance}')        
         buy_orders, sell_orders = make_order_list()
         # 6시간에 한번
         if hour in [0, 6, 12, 18]:    
-            # 미체결 취소    
+            # 미체결 취소
+            sold_orders = []
             for pending in pending_orders:
                 if pending["side"] in ["bid", "ask"]:
                     res = broker.cancel(pending["market"], pending["price"], pending["volume"], pending["uuid"])
@@ -480,16 +493,24 @@ def doing_trade(n_intervals, disabled):
                 res = broker.sell(order["coin_name"], order["price"],  order["volume"])
                 if res:
                     pending_orders.append(res)
+                    sold_orders.append(res["market"])
+                    broker.add_cash(float(order["price"])*float(order["volume"]))
+                    with open('tmp/sold', 'wb') as f:
+                        pickle.dump(sold_orders, f)
 
         # 1시간에 한번 주문 갱신 및 매수주문만 추가갱신.        
         for order in buy_orders[:MAX_ORDER - current_order_used]:
             if (order["price"]*order["volume"])<5000:
                 continue
+            if order["coin_name"] in sold_orders:
+                continue
             res = broker.buy(order["coin_name"], order["price"], order["volume"])
+
             if res:
                 pending_orders.append(res)
-            current_order_used+=1
-            broker.sub_cash(float(order["price"])*float(order["volume"]))
+                current_order_used+=1
+                broker.sub_cash(float(order["price"])*float(order["volume"]))
+
     return html.H4(datetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S"))
 
 
