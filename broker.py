@@ -133,9 +133,9 @@ class Broker:
             'price': str(price),
             'ord_type': 'limit',
         }
-        headers = get_headers(query=query)
-
+        
         while True:
+            headers = get_headers(query=query)
             res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
 
             if res.status_code == 201:
@@ -160,9 +160,9 @@ class Broker:
             'price': str(price),
             'ord_type': 'limit',
         }
-        headers = get_headers(query=query)
-        
+                
         while True:
+            headers = get_headers(query=query)
             res = requests.post(self.server_url + "/v1/orders", params=query, headers=headers)
 
             if res.status_code == 201:
