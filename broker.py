@@ -181,9 +181,9 @@ class Broker:
     def cancel(self, coin_name, price, volume, uuid):
         query = {
             'uuid': uuid,
-        }
-        headers = get_headers(query=query)
+        }        
         while True:
+            headers = get_headers(query=query)
             res = requests.delete(self.server_url + "/v1/order", params=query, headers=headers)
 
             if res.status_code == 200:
@@ -196,6 +196,7 @@ class Broker:
                 if e['error']['name'] == "too_many_request_order":
                     time.sleep(0.1)
                     continue
+                return
         return 
 
     def marketCheck(self, coin_name):

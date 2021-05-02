@@ -108,10 +108,12 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 accs = broker.get_accounts()
 current_balance = [cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"]]
-broker.set_cash(START_CASH - sum([accs.get(cname)['balance']*accs.get(cname)['avg_buy_price'] for cname in current_balance]))
+sum_balance_value = sum([accs.get(cname)['balance']*accs.get(cname)['avg_buy_price'] for cname in current_balance])
+broker.set_cash(START_CASH - sum_balance_value if START_CASH>=sum_balance_value else 0)
 current_order_used = len(current_balance)
 hours_check = [False for _ in range(24)]
-
+minutes_check = [False for _ in range(60)]
+minutes_check[0] = True # 거래가 일어나는 00분은 제외(데이터 갱신이 안될 수 있음)
 coin_data = []
 buy_orders = []
 sell_orders = []
@@ -141,6 +143,15 @@ app.layout = html.Div([
             type="default",
             children=html.Div(id="loading-output-1")
         ),
+        html.Div([
+            html.Div(id="broker_money"),
+            dcc.Input(id='broker_money_input', value=0, type='number', min=0, step=5000),
+            html.Button('Set', id='set_broker_money')]),
+        dcc.Loading(
+            id="loading-2",
+            type="default",
+            children=html.Div(id="loading-output-2")
+        ),    
     ]),
 
     html.Div([
@@ -187,7 +198,8 @@ app.layout = html.Div([
                     html.Th('volume'),
                     html.Th('매수평균'),
                     html.Th('현재가'),
-                    html.Th('등락률')
+                    html.Th('등락률'),
+                    html.Th('총액')
                 ])
             ),
             html.Tbody(id="my_account"),
@@ -223,21 +235,19 @@ app.layout = html.Div([
     ),
 ])
 
-# @app.callback(
-#     Input("buy_button", "n_clicks"),
-# )
-# def send_buy_request(n):
-#     if n_clicks is None:
-#         raise PreventUpdate
-#     return
+@app.callback(
+    Output("loading-output-2", "children"),
+    Input("set_broker_money", "n_clicks"),
+    State("broker_money_input", "value"),    
+    prevent_initial_call=True,
+)
+def set_broker_money(n_clicks, value):
+    if n_clicks is None:
+        raise PreventUpdate
+    global broker
+    broker.set_cash(value)
 
-# @app.callback(
-#     Input("sell_button", "n_clicks"),
-# )
-# def send_sell_request(n):
-#     if n_clicks is None:
-#         raise PreventUpdate
-#     return
+    return
 
 @app.callback(
     Output(component_id='trade_interval', component_property='disabled'),
@@ -257,6 +267,7 @@ def trade_start_stop(start, stop):
 
 @app.callback(
     Output("my_account", "children"),
+    Output("broker_money", "children"),
     Output("buy_list_table", "children"),
     Output("sell_list_table", "children"),
     Input("infomation_interval", "n_intervals")
@@ -278,23 +289,24 @@ def update_accounts(n):
                 html.Td("-"),
                 html.Td("-"),
                 html.Td("-"),
+                html.Td(f"{float(acc['balance']) + float(acc['locked']):.2f}"),
             ])
         else:
             item = html.Tr([
                 html.Td(cname),
-                html.Td(acc["balance"]),
+                html.Td(f'{float(acc["balance"]) + float(acc["locked"]):.8f}'),
                 html.Td(acc["avg_buy_price"]),
                 html.Td(tinfo[cname]),
                 html.Td(f'{(float(tinfo[cname])/float(acc["avg_buy_price"])-1)*100:.2f}%'),
+                html.Td(f'{float(acc["balance"])*float(acc["avg_buy_price"]) + float(acc["locked"])*float(acc["avg_buy_price"]):.2f}')
             ])
         rows.append(item)        
-
-    return rows,  generate_buy_list(), generate_sell_list()
+    broker_message = f"broker cash: {broker.get_cash():.2f}"
+    return rows, broker_message, generate_buy_list(), generate_sell_list()
 
 
 def generate_buy_list():
     global buy_orders, top50
-    sorted_orders = sorted(buy_orders, key=lambda x : x["coin"].df["Momentum"][-2], reverse=True)
     return html.Table([        
         html.Thead(
             html.Tr([
@@ -312,7 +324,7 @@ def generate_buy_list():
                 html.Td(f'{top50.get(od["coin_name"])/100_000_000:,.2f}억원'),
                 html.Td(f'{od["coin"].df["Momentum"][-2]:.2f}'),
                 html.Td(od['price']),
-            ]) for i, od in enumerate(sorted_orders) if od["coin_name"] in top30big     # 정렬 및 필터
+            ]) for i, od in enumerate(buy_orders) if od["coin_name"] in top30big     # 정렬 및 필터
         ])
     ])
 
@@ -336,7 +348,6 @@ def generate_sell_list():
             ]) for od in sell_orders
         ])
     ])
-
 
 def make_order_list():
     global current_order_used, coin_data
@@ -383,7 +394,8 @@ def make_order_list():
                     "coin_name": coin.coin_name,
                     "volume": account["balance"],
                     "price" : coin.df["trade_price"][-2],
-                    "chg": (coin.df["trade_price"][-2]/float(account["avg_buy_price"])-1)*100
+                    "chg": (coin.df["trade_price"][-2]/float(account["avg_buy_price"])-1)*100,
+                    "reason": coin.df["sell_reason"][-2],
                 }
                 sell_orders.append(order)
     return buy_orders, sell_orders
@@ -402,7 +414,6 @@ def load_coin_data(n_clicks):
 
     return None
 
-
 @app.callback(
     Output("pending_list", "children"),
     Input("pendingcheck_interval", "n_intervals")
@@ -420,11 +431,15 @@ def check_pending(n):
                     if order["side"] == "ask":
                         current_order_used-=1
                         broker.add_cash(float(order["price"])*float(order["volume"]))
-                    logger.info(f"{c[order['side']]} order complete - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}")
-                elif order["state"] == "cancel":                
-                    current_order_used-=1
-                    broker.add_cash(float(order["price"])*float(order["volume"]))
-                    logger.info(f"{c[order['side']]} order cancel - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}")
+                    elif order["side"] == "bid":
+                        broker.sub_cash(float(order["price"])*float(order["volume"]))
+                    logger.info(f"{c[order['side']]} order complete - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}, broker_cash: {broker.get_cash()}")
+                elif order["state"] == "cancel":
+                    if order["side"] == "ask":
+                        current_order_used-=1
+                    elif order["side"] == "bid":
+                        current_order_used+=1
+                    logger.info(f"{c[order['side']]} order cancel - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}, broker_cash: {broker.get_cash()}")
         
         waits = broker.orderCheck(uuids)
         pending_orders = []
@@ -454,16 +469,18 @@ def check_pending(n):
 def doing_trade(n_intervals, disabled):
     if disabled or n_intervals<=0:
         raise PreventUpdate
-    global pending_orders, hours_check, current_order_used, buy_orders, sell_orders, sold_orders
+    global pending_orders, hours_check, minutes_check, current_order_used, buy_orders, sell_orders, sold_orders
     t = datetime.datetime.now()
     hour = t.hour
-   
-    if not hours_check[hour]:
-        hours_check = [False for _ in range(24)]
-        hours_check[hour] = True
+    minute = t.minute
+
+    if ((minute%5 == 0) and not minutes_check[minute]) or n_intervals==1:
+        minutes_check = [False for _ in range(60)]
+        minutes_check[minute] = True
+        minutes_check[0] = True  # 거래가 일어나는 00분은 제외
         # 총자산 계산
         total_balance = 0
-        acc = broker.get_accounts()
+        accs = broker.get_accounts()
         current_balance = [cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"]]
         tinfo = {}
         if current_balance:
@@ -472,7 +489,7 @@ def doing_trade(n_intervals, disabled):
                 tinfo = {c["market"]: c["trade_price"] for c in tinfo}
                 if tinfo: break
         if tinfo:
-            for k, v in acc.items():
+            for k, v in accs.items():
                 if k == "KRW-KRW" : total_balance += v["balance"]+v["locked"]
                 elif k == "KRW-USDT": continue
                 else: total_balance += (v["balance"]*float(tinfo.get(k)) + v["locked"]*float(tinfo.get(k)))
@@ -480,7 +497,9 @@ def doing_trade(n_intervals, disabled):
         logger.info(f'Current Money : {total_balance}')        
         buy_orders, sell_orders = make_order_list()
         # 6시간에 한번
-        if hour in [0, 6, 12, 18]:    
+        if not hours_check[hour] and hour in [0, 6, 12, 18]:
+            hours_check = [False for _ in range(24)]
+            hours_check[hour] = True
             # 미체결 취소
             sold_orders = []
             for pending in pending_orders:
@@ -490,15 +509,15 @@ def doing_trade(n_intervals, disabled):
                         pending_orders.append(res)
 
             for order in sell_orders:
+                logger.info(f"sell reason: {order['reason']}")
                 res = broker.sell(order["coin_name"], order["price"],  order["volume"])
                 if res:
                     pending_orders.append(res)
                     sold_orders.append(res["market"])
-                    broker.add_cash(float(order["price"])*float(order["volume"]))
                     with open('tmp/sold', 'wb') as f:
                         pickle.dump(sold_orders, f)
 
-        # 1시간에 한번 주문 갱신 및 매수주문만 추가갱신.        
+        # 5분에 한번 주문 갱신 및 매수주문만 추가갱신.        
         for order in buy_orders[:MAX_ORDER - current_order_used]:
             if (order["price"]*order["volume"])<5000:
                 continue
@@ -509,7 +528,7 @@ def doing_trade(n_intervals, disabled):
             if res:
                 pending_orders.append(res)
                 current_order_used+=1
-                broker.sub_cash(float(order["price"])*float(order["volume"]))
+                
 
     return html.H4(datetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S"))
 
