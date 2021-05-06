@@ -29,9 +29,12 @@ from plotly.subplots import make_subplots
 server_loger = logging.getLogger('werkzeug')
 server_loger.disabled = True
 
-logger = logging.getLogger()
+logger = logging.getLogger('trading')
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(message)s')
+
+sysLogger = logging.getLogger('system')
+sysLogger.setLevel(logging.DEBUG)
 
 # log 출력
 stream_handler = logging.StreamHandler()
@@ -39,10 +42,15 @@ stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
 
 # log를 파일에 출력
-file_handler = logging.handlers.TimedRotatingFileHandler(filename="log/logfile", when="midnight", interval=1, encoding="utf-8")
+file_handler = logging.handlers.TimedRotatingFileHandler(filename="log/tradefile", when="midnight", interval=1, encoding="utf-8")
 file_handler.setFormatter(formatter)
 file_handler.suffix = "%Y%m%d"
 logger.addHandler(file_handler)
+
+file_handler_for_sys = logging.handlers.TimedRotatingFileHandler(filename="log/sysfile", when="midnight", interval=1, encoding="utf-8")
+file_handler_for_sys.setFormatter(formatter)
+file_handler_for_sys.suffix = "%Y%m%d"
+sysLogger.addHandler(file_handler)
 
 # EXCHANGE API
 # [주문 요청]
@@ -134,6 +142,9 @@ except:
     pass
 print(current_balance)
 print(sold_orders)
+sysLogger.debug(f'current_balance :{current_balance}')
+sysLogger.debug(f'sold_orders :{sold_orders}')
+
 app.layout = html.Div([
     html.H1(children='ALGO Trading'),
 
@@ -262,8 +273,10 @@ def trade_start_stop(start, stop):
         return True, True, html.H4("Stoped")
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
     if 'start_trade' in changed_id:
+        sysLogger.debug('Trading start')
         return False, False, html.H4("Trading")
     elif 'stop_trade' in changed_id:
+        sysLogger.debug('Trading stop')
         return True, True, html.H4("Stoped")  
 
 @app.callback(
@@ -365,9 +378,11 @@ def make_order_list():
     buy_list, sell_list = myStrategyM(coin_data)
     current_accounts = broker.get_accounts()
     cash_per_order = 0
-    pendinglist = [pending["market"] for pending in pending_orders]
+    pendinglist = [pending["market"] for pending in pending_orders]    
     if current_order_used<MAX_ORDER:
         cash_per_order = (broker.get_cash() / (MAX_ORDER-current_order_used))
+    sysLogger.debug(f'cash_per_order: {cash_per_order} = {broker.get_cash()}/({MAX_ORDER}-{current_order_used})')
+    sysLogger.debug(f'pending list : {pendinglist}')
     for coin in buy_list:        
         if coin.coin_name in pendinglist:
             continue
@@ -402,6 +417,8 @@ def make_order_list():
                     "reason": coin.df.loc[tindex, "sell_reason"],
                 }
                 sell_orders.append(order)
+    # sysLogger.debug(f'buy_orders : {buy_orders}')
+    # sysLogger.debug(f'sell_orders : {sell_orders}')
     return buy_orders, sell_orders
 
 @app.callback(
@@ -427,10 +444,12 @@ def check_pending(n):
     global pending_orders, current_order_used
     if pending_orders:
         uuids = [pending["uuid"] for pending in pending_orders]
-        res = broker.orderCheck(uuids, ["done", "cancel"])        
+        res = broker.orderCheck(uuids, ["done", "cancel"])
         c={"bid":"BUY", "ask":"SELL"}
         if res:
-            for order in res:            
+            sysLogger.debug(f'pending_orders in check: {pending_orders}')
+            sysLogger.debug(f'pending_orders check result(done, cancel): {res}')
+            for order in res:
                 if order["state"] == "done":                
                     if order["side"] == "ask":
                         current_order_used-=1
@@ -443,9 +462,10 @@ def check_pending(n):
                         current_order_used-=1
                     logger.info(f"{c[order['side']]} order cancel - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}, broker_cash: {broker.get_cash()}")
         
-        waits = broker.orderCheck(uuids)
+        waits = broker.orderCheck(uuids)        
         pending_orders = []
         if waits:
+            sysLogger.debug(f'pending_orders check result(wait): {waits}')
             pending_orders = waits
         
     rows = []
@@ -475,12 +495,11 @@ def doing_trade(n_intervals, disabled):
     t = datetime.datetime.now()
     hour = t.hour
     minute = t.minute
+    pending_added = False
 
     if ((minute%5 == 0) and not minutes_check[minute]) or n_intervals==1:
         minutes_check = [False for _ in range(60)]
         minutes_check[minute] = True
-        # minutes_check[0] = True  # 거래가 일어나는 00분은 제외
-        # 총자산 계산
         total_balance = 0
         accs = broker.get_accounts()
         current_balance = [cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"]]
@@ -506,15 +525,21 @@ def doing_trade(n_intervals, disabled):
             sold_orders = []
             for pending in pending_orders:
                 if pending["side"] in ["bid", "ask"]:
+                    sysLogger.debug(f'cancel_order : {pending}')
                     res = broker.cancel(pending["market"], pending["price"], pending["volume"], pending["uuid"])
                     if res:
+                        sysLogger.debug(f'cancel_order_pending add : {res}')
                         pending_orders.append(res)
+                        pending_added=True
 
             for order in sell_orders:
                 logger.info(f"sell reason: {order['reason']}")
+                sysLogger.debug(f'sell_order : {order}')
                 res = broker.sell(order["coin_name"], order["price"],  order["volume"])
                 if res:
+                    sysLogger.debug(f'sell_order_pending add : {res}')
                     pending_orders.append(res)
+                    pending_added=True
                     sold_orders.append(res["market"])
                     with open('tmp/sold', 'wb') as f:
                         pickle.dump(sold_orders, f)
@@ -527,13 +552,17 @@ def doing_trade(n_intervals, disabled):
                 continue
             if order["coin_name"] in sold_orders:
                 continue
+            sysLogger.debug(f'buy_order : {order}')
             res = broker.buy(order["coin_name"], order["price"], order["volume"])
 
             if res:
+                sysLogger.debug(f'buy_order_pending add : {res}')
                 pending_orders.append(res)
                 current_order_used+=1
-                
+                pending_added=True
 
+    if pending_added:
+        sysLogger.debug(f'pending_orders after trading function: {pending_orders}')
     return html.H4(datetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S"))
 
 

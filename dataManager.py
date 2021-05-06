@@ -5,7 +5,7 @@ import datetime
 import logging
 from collections import deque
 
-logger = logging.getLogger(())
+logger = logging.getLogger('trading')
 
 def calRSI(m_Df, m_N):
 

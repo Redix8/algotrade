@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 import requests
 import logging
 
-logger = logging.getLogger(())
+logger = logging.getLogger('trading')
 
 access_key = os.environ['UPBIT_OPEN_API_ACCESS_KEY']
 secret_key = os.environ['UPBIT_OPEN_API_SECRET_KEY']
