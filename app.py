@@ -12,6 +12,7 @@ import time
 import logging
 import logging.handlers
 import pickle
+import pprint
 
 from tqdm import tqdm
 import pandas as pd
@@ -142,8 +143,8 @@ except:
     pass
 print(current_balance)
 print(sold_orders)
-sysLogger.debug(f'current_balance :{current_balance}')
-sysLogger.debug(f'sold_orders :{sold_orders}')
+sysLogger.debug(f'current_balance :{pprint.pformat(current_balance)}')
+sysLogger.debug(f'sold_orders :{pprint.pformat(sold_orders)}')
 
 app.layout = html.Div([
     html.H1(children='ALGO Trading'),
@@ -382,7 +383,7 @@ def make_order_list():
     if current_order_used<MAX_ORDER:
         cash_per_order = (broker.get_cash() / (MAX_ORDER-current_order_used))
     sysLogger.debug(f'cash_per_order: {cash_per_order} = {broker.get_cash()}/({MAX_ORDER}-{current_order_used})')
-    sysLogger.debug(f'pending list : {pendinglist}')
+    sysLogger.debug(f'pending list : {pprint.pformat(pendinglist)}')
     for coin in buy_list:        
         if coin.coin_name in pendinglist:
             continue
@@ -447,8 +448,8 @@ def check_pending(n):
         res = broker.orderCheck(uuids, ["done", "cancel"])
         c={"bid":"BUY", "ask":"SELL"}
         if res:
-            sysLogger.debug(f'pending_orders in check: {pending_orders}')
-            sysLogger.debug(f'pending_orders check result(done, cancel): {res}')
+            sysLogger.debug(f'pending_orders in check: {pprint.pformat(pending_orders)}')
+            sysLogger.debug(f'pending_orders check result(done, cancel): {pprint.pformat(res)}')
             for order in res:
                 if order["state"] == "done":                
                     if order["side"] == "ask":
@@ -465,7 +466,7 @@ def check_pending(n):
         waits = broker.orderCheck(uuids)        
         pending_orders = []
         if waits:
-            sysLogger.debug(f'pending_orders check result(wait): {waits}')
+            sysLogger.debug(f'pending_orders check result(wait): {pprint.pformat(waits)}')
             pending_orders = waits
         
     rows = []
@@ -523,21 +524,24 @@ def doing_trade(n_intervals, disabled):
             hours_check[hour] = True
             # 미체결 취소
             sold_orders = []
+            sysLogger.debug(f'result of making buy order : {pprint.pformat(buy_orders)}')
+            sysLogger.debug(f'result of making sell order : {pprint.pformat(sell_orders)}')
+
             for pending in pending_orders:
                 if pending["side"] in ["bid", "ask"]:
-                    sysLogger.debug(f'cancel_order : {pending}')
+                    sysLogger.debug(f'cancel_order : {pprint.pformat(pending)}')
                     res = broker.cancel(pending["market"], pending["price"], pending["volume"], pending["uuid"])
                     if res:
-                        sysLogger.debug(f'cancel_order_pending add : {res}')
+                        sysLogger.debug(f'cancel_order_pending add : {pprint.pformat(res)}')
                         pending_orders.append(res)
                         pending_added=True
 
             for order in sell_orders:
                 logger.info(f"sell reason: {order['reason']}")
-                sysLogger.debug(f'sell_order : {order}')
+                sysLogger.debug(f'sell_order : {pprint.pformat(order)}')
                 res = broker.sell(order["coin_name"], order["price"],  order["volume"])
                 if res:
-                    sysLogger.debug(f'sell_order_pending add : {res}')
+                    sysLogger.debug(f'sell_order_pending add : {pprint.pformat(res)}')
                     pending_orders.append(res)
                     pending_added=True
                     sold_orders.append(res["market"])
@@ -552,17 +556,17 @@ def doing_trade(n_intervals, disabled):
                 continue
             if order["coin_name"] in sold_orders:
                 continue
-            sysLogger.debug(f'buy_order : {order}')
+            sysLogger.debug(f'buy_order : {pprint.pformat(order)}')
             res = broker.buy(order["coin_name"], order["price"], order["volume"])
 
             if res:
-                sysLogger.debug(f'buy_order_pending add : {res}')
+                sysLogger.debug(f'buy_order_pending add : {pprint.pformat(res)}')
                 pending_orders.append(res)
                 current_order_used+=1
                 pending_added=True
 
     if pending_added:
-        sysLogger.debug(f'pending_orders after trading function: {pending_orders}')
+        sysLogger.debug(f'pending_orders after trading function: {pprint.pformat(pending_orders)}')
     return html.H4(datetime.datetime.now().strftime("%Y/%m/%d - %H:%M:%S"))
 
 
