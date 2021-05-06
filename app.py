@@ -446,10 +446,12 @@ def check_pending(n):
     if pending_orders:
         uuids = [pending["uuid"] for pending in pending_orders]
         res = broker.orderCheck(uuids, ["done", "cancel"])
-        c={"bid":"BUY", "ask":"SELL"}
-        if res:
+        if res:            
             sysLogger.debug(f'pending_orders in check: {pprint.pformat(pending_orders)}')
             sysLogger.debug(f'pending_orders check result(done, cancel): {pprint.pformat(res)}')
+        res = list({ped['uuid']: ped for ped in res}.values())
+        c={"bid":"BUY", "ask":"SELL"}
+        if res:
             for order in res:
                 if order["state"] == "done":                
                     if order["side"] == "ask":
