@@ -55,7 +55,7 @@ logger.addHandler(file_handler)
 
 # static values
 MAX_ORDER = 5
-START_CASH = 50_000
+START_CASH = 250_000
 
 # broker init
 broker = Broker()
@@ -107,13 +107,13 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 accs = broker.get_accounts()
-current_balance = [cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"]]
+current_balance = [cname for cname, v in accs.items() if cname not in ["KRW-KRW", "KRW-USDT"] and (v["balance"]*v["avg_buy_price"]+v["locked"]*v["avg_buy_price"]>=5000)]
 sum_balance_value = sum([accs.get(cname)['balance']*accs.get(cname)['avg_buy_price'] for cname in current_balance])
 broker.set_cash(START_CASH - sum_balance_value if START_CASH>=sum_balance_value else 0)
 current_order_used = len(current_balance)
 hours_check = [False for _ in range(24)]
 minutes_check = [False for _ in range(60)]
-minutes_check[0] = True # 거래가 일어나는 00분은 제외(데이터 갱신이 안될 수 있음)
+# minutes_check[0] = True # 거래가 일어나는 00분은 제외(데이터 갱신이 안될 수 있음)
 coin_data = []
 buy_orders = []
 sell_orders = []
@@ -129,10 +129,11 @@ except:
 
 try:
     with open('tmp/sold', 'rb') as f:
-        sold_orders = pickle.load(f)
+        sold_orders = pickle.load(f)    
 except:
     pass
-
+print(current_balance)
+print(sold_orders)
 app.layout = html.Div([
     html.H1(children='ALGO Trading'),
 
@@ -298,7 +299,7 @@ def update_accounts(n):
                 html.Td(acc["avg_buy_price"]),
                 html.Td(tinfo[cname]),
                 html.Td(f'{(float(tinfo[cname])/float(acc["avg_buy_price"])-1)*100:.2f}%'),
-                html.Td(f'{float(acc["balance"])*float(acc["avg_buy_price"]) + float(acc["locked"])*float(acc["avg_buy_price"]):.2f}')
+                html.Td(f'{float(acc["balance"])*float(tinfo[cname]) + float(acc["locked"])*float(tinfo[cname]):.2f}')
             ])
         rows.append(item)        
     broker_message = f"broker cash: {broker.get_cash():.2f}"
@@ -356,6 +357,9 @@ def make_order_list():
         coin_data.append(CoinData(coin_name)) 
         time.sleep(0.1)
     
+    t = datetime.datetime.now()
+    t = t - datetime.timedelta(hours=t.hour%6+6)
+    tindex = t.isoformat(sep=" ", timespec="hours")
     buy_orders = []
     sell_orders = []
     buy_list, sell_list = myStrategyM(coin_data)
@@ -393,9 +397,9 @@ def make_order_list():
                     "coin": coin,
                     "coin_name": coin.coin_name,
                     "volume": account["balance"],
-                    "price" : coin.df["trade_price"][-2],
-                    "chg": (coin.df["trade_price"][-2]/float(account["avg_buy_price"])-1)*100,
-                    "reason": coin.df["sell_reason"][-2],
+                    "price" : coin.df.loc[tindex, "trade_price"],
+                    "chg": (coin.df.loc[tindex, "trade_price"]/float(account["avg_buy_price"])-1)*100,
+                    "reason": coin.df.loc[tindex, "sell_reason"],
                 }
                 sell_orders.append(order)
     return buy_orders, sell_orders
@@ -434,11 +438,9 @@ def check_pending(n):
                     elif order["side"] == "bid":
                         broker.sub_cash(float(order["price"])*float(order["volume"]))
                     logger.info(f"{c[order['side']]} order complete - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}, broker_cash: {broker.get_cash()}")
-                elif order["state"] == "cancel":
-                    if order["side"] == "ask":
+                elif order["state"] == "cancel":                    
+                    if order["side"] == "bid":
                         current_order_used-=1
-                    elif order["side"] == "bid":
-                        current_order_used+=1
                     logger.info(f"{c[order['side']]} order cancel - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}, broker_cash: {broker.get_cash()}")
         
         waits = broker.orderCheck(uuids)
@@ -477,7 +479,7 @@ def doing_trade(n_intervals, disabled):
     if ((minute%5 == 0) and not minutes_check[minute]) or n_intervals==1:
         minutes_check = [False for _ in range(60)]
         minutes_check[minute] = True
-        minutes_check[0] = True  # 거래가 일어나는 00분은 제외
+        # minutes_check[0] = True  # 거래가 일어나는 00분은 제외
         # 총자산 계산
         total_balance = 0
         accs = broker.get_accounts()
@@ -518,7 +520,9 @@ def doing_trade(n_intervals, disabled):
                         pickle.dump(sold_orders, f)
 
         # 5분에 한번 주문 갱신 및 매수주문만 추가갱신.        
-        for order in buy_orders[:MAX_ORDER - current_order_used]:
+        for order in buy_orders:
+            if MAX_ORDER - current_order_used<=0:
+                continue
             if (order["price"]*order["volume"])<5000:
                 continue
             if order["coin_name"] in sold_orders:
