@@ -51,7 +51,7 @@ logger.addHandler(file_handler)
 file_handler_for_sys = logging.handlers.TimedRotatingFileHandler(filename="log/sysfile", when="midnight", interval=1, encoding="utf-8")
 file_handler_for_sys.setFormatter(formatter)
 file_handler_for_sys.suffix = "%Y%m%d"
-sysLogger.addHandler(file_handler)
+sysLogger.addHandler(file_handler_for_sys)
 
 # EXCHANGE API
 # [주문 요청]
