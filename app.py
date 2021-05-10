@@ -467,6 +467,7 @@ def check_pending(n):
         done_or_cancle = set([r['uuid'] for r in res])
         waits_ids = [uuid for uuid in uuids if uuid not in done_or_cancle]
         pending_orders = []
+        waits = []
         if waits_ids:
             waits = broker.orderCheck(waits_ids)        
         if waits:
@@ -530,16 +531,17 @@ def doing_trade(n_intervals, disabled):
             sold_orders = []
             sysLogger.debug(f'result of making buy order : \n{pprint.pformat(buy_orders)}')
             sysLogger.debug(f'result of making sell order : \n{pprint.pformat(sell_orders)}')
-
+            pending_canceled = []
             for pending in pending_orders:
                 if pending["side"] in ["bid", "ask"]:
                     sysLogger.debug(f'cancel_order : {pprint.pformat(pending)}')
                     res = broker.cancel(pending["market"], pending["price"], pending["volume"], pending["uuid"])
                     if res:
                         sysLogger.debug(f'cancel_order_pending add : \n{pprint.pformat(res)}')
-                        pending_orders.append(res)
+                        pending_canceled.append(res)
                         pending_added=True
-
+            pending_orders+=pending_canceled
+            
             for order in sell_orders:
                 logger.info(f"sell reason: {order['reason']}")
                 sysLogger.debug(f'sell_order : {pprint.pformat(order)}')
