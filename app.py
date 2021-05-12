@@ -395,13 +395,13 @@ def make_order_list():
             market_info = broker.marketCheck(coin.coin_name)
             if not market_info["market"]["state"] == "active":
                 continue
-
-            order_volume = (cash_per_order * (1-float(market_info["bid_fee"])) / coin.last_price)
+            last_price = coin.df.loc[tindex, 'trade_price']
+            order_volume = (cash_per_order * (1-float(market_info["bid_fee"])) / last_price)
             order = {
                 "coin": coin,
                 "coin_name": coin.coin_name,
                 "volume": order_volume,
-                "price" : coin.last_price,
+                "price" : last_price,
             }
             buy_orders.append(order)
          
@@ -541,7 +541,7 @@ def doing_trade(n_intervals, disabled):
                         pending_canceled.append(res)
                         pending_added=True
             pending_orders+=pending_canceled
-            
+
             for order in sell_orders:
                 logger.info(f"sell reason: {order['reason']}")
                 sysLogger.debug(f'sell_order : {pprint.pformat(order)}')
