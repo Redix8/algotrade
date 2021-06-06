@@ -64,7 +64,7 @@ sysLogger.addHandler(file_handler_for_sys)
 
 # static values
 MAX_ORDER = 5
-START_CASH = 250_000
+START_CASH = 600_000
 
 # broker init
 broker = Broker()
@@ -458,7 +458,8 @@ def check_pending(n):
                         current_order_used-=1
                         broker.add_cash(float(order["price"])*float(order["volume"]))
                     elif order["side"] == "bid":
-                        broker.sub_cash(float(order["price"])*float(order["volume"]))
+                        # broker.sub_cash(float(order["price"])*float(order["volume"]))
+                        pass
                     logger.info(f"{c[order['side']]} order complete - {order['market']}, {order['price']}, {order['volume']}, order used:{current_order_used}, broker_cash: {broker.get_cash()}")
                 elif order["state"] == "cancel":                    
                     if order["side"] == "bid":
@@ -540,6 +541,8 @@ def doing_trade(n_intervals, disabled):
                         sysLogger.debug(f'cancel_order_pending add : \n{pprint.pformat(res)}')
                         pending_canceled.append(res)
                         pending_added=True
+                        if pending["market"] in sold_orders:
+                            sold_orders.remove(pending["market"])
             pending_orders+=pending_canceled
 
             for order in sell_orders:
@@ -570,6 +573,7 @@ def doing_trade(n_intervals, disabled):
                 sysLogger.debug(f'buy_order_pending add : \n{pprint.pformat(res)}')
                 pending_orders.append(res)
                 current_order_used+=1
+                broker.sub_cash(float(order["price"])*float(order["volume"]))
                 pending_added=True
 
     if pending_added:
