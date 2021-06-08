@@ -544,6 +544,9 @@ def doing_trade(n_intervals, disabled):
                         if pending["market"] in sold_orders:
                             sold_orders.remove(pending["market"])
             pending_orders+=pending_canceled
+            
+            if pending_canceled:
+                buy_orders, sell_orders = make_order_list()
 
             for order in sell_orders:
                 logger.info(f"sell reason: {order['reason']}")
